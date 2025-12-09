@@ -1,0 +1,97 @@
+# HOW TO MIGRATE YOUR DATABASE SCHEMA (Flask + SQLAlchemy + Flask-Migrate)
+
+**Follow these steps every time you want to upgrade your DB schema safely!**
+
+---
+
+## 1. ONE-TIME SETUP
+
+a. **Install Flask-Migrate**
+```
+pip install Flask-Migrate
+```
+
+b. **Edit your app.py (or main app file):**
+
+Insert after db/app are initialized (before return app):
+
+```python
+from flask_migrate import Migrate
+
+# (after db.init_app(app))
+migrate = Migrate(app, db)
+```
+
+c. **Initialize migrations directory (run once, in project dir):**
+```
+flask db init
+```
+This creates the `migrations/` folder.
+
+---
+
+## 2. EACH TIME YOU CHANGE YOUR MODELS
+
+a. **Edit your models (e.g. add a column, table, or index).**
+
+b. **Create a migration script:**
+```
+flask db migrate -m "your message about what's changing"
+```
+
+c. **Review and apply the upgrade:**
+```
+flask db upgrade
+```
+
+- This updates your real database (no data loss, safe add/delete/rename columns).
+- You can repeat `migrate` and `upgrade` as models evolve.
+
+---
+
+## 3. ON DEPLOYMENT / EXECUTABLE (.exe) BUILDS
+
+- **DO NOT run `db.create_all()` on user/production environments. Only use it for brand-new, empty databases.**
+- Always run:
+    ```
+    flask db upgrade
+    ```
+  ...after installing/updating your code and before the first use by the .exe.
+- You can automate this step in your installer, launcher, or as a manual post-install step (“Please run: flask db upgrade”).
+
+---
+
+## 4. IF YOU SHIP AN .EXE, ADD THIS TO YOUR README
+
+**After installing or extracting this application, run:**
+```
+flask db upgrade
+```
+...to update the local database for new features or bugfixes.
+
+---
+
+## 5. TIPS & TROUBLESHOOTING
+
+- Use `flask db history` to see migration history.
+- If you get DB upgrade errors, check models and migration scripts. Don't run `create_all()` on existing data!
+- To roll back a bad migration:
+    ```
+    flask db downgrade
+    ```
+
+---
+
+## 6. EXAMPLE WORKFLOW
+
+```
+pip install Flask-Migrate
+
+# (After editing models.py)
+flask db migrate -m "Add new indexes and relationships"
+flask db upgrade
+```
+
+---
+
+**Keep this file handy every time you change your database models!**
