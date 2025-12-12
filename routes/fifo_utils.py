@@ -123,16 +123,15 @@ def consume_inventory_fifo(product_id, quantity_needed, sale_id=None, sale_item_
 
     # Robust engine/dialect detection (handles various SQLAlchemy setups)
     try:
-        bind = None
-        if hasattr(db, 'engine') and db.engine is not None:
-            bind = db.engine
-        elif getattr(db, 'session', None) is not None and getattr(db.session, 'get_bind', None):
-            bind = db.session.get_bind()
-        engine_name = getattr(getattr(bind, 'dialect', None), 'name', '') or 'sqlite'
+        bind = db.engine if hasattr(db, 'engine') else db.session.get_bind()
+        engine_name = bind.dialect.name.lower()
     except Exception:
-        engine_name = 'sqlite'
-    engine_name = (engine_name or '').lower()
-    supports_skip_locked = engine_name in ('postgresql', 'mysql', 'mariadb')
+        engine_name = 'mysql'  # Default to MySQL/MariaDB
+        
+    if engine_name not in ('mysql', 'mariadb'):
+        raise RuntimeError(f"Unsupported database:  {engine_name}. This application requires MariaDB/MySQL.")
+
+    supports_skip_locked = True 
 
     # Helper to attempt applying the best available FOR UPDATE variant
     def _fetch_next_lot(query):
