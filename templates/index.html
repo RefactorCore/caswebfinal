@@ -10,6 +10,32 @@
 </style>
 
 <div class="container my-4">
+  {% if license_warning %}
+<div class="alert alert-{{ license_warning.type }} alert-dismissible fade show" role="alert">
+  <div class="d-flex justify-content-between align-items-center">
+    <div>
+      <strong>{{ license_warning.message }}</strong>
+      {% if license_warning.type == 'warning' %}
+        <br><small>Contact your administrator to renew your license before it expires. </small>
+      {% endif %}
+    </div>
+
+    <div class="btn-group btn-group-sm" role="group" aria-label="license actions">
+      <!-- Primary renew action: redirect to the license entry page so user can paste a new key -->
+      <a href="{{ url_for('core.setup_license') }}" class="btn btn-sm btn-primary">
+        <i class="bi bi-arrow-repeat"></i> Renew License
+      </a>
+
+      <!-- Optional: quick contact to support -->
+      <a href="mailto:jahsaberon08@gmail.com?subject=License Renewal Request" class="btn btn-sm btn-outline-info">
+        <i class="bi bi-envelope-fill"></i> Contact Support
+      </a>
+    </div>
+
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+</div>
+{% endif %}
   <h2 class="mb-4">📊 Dashboard Overview</h2>
 
   <!-- Existing Stats Cards -->
