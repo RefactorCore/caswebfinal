@@ -2,7 +2,7 @@
 # Updated: register money and num filters inside create_app and removed invalid global assignment.
 
 # --- FIX: Import the necessary functions ---
-from flask import Flask, redirect, url_for, request
+from flask import Flask, redirect, url_for, request, flash, session
 # --- FIX: Import current_user ---
 from flask_login import LoginManager, current_user
 from routes.accounts import accounts_bp
@@ -19,7 +19,8 @@ from passlib.hash import pbkdf2_sha256
 from routes.void_transactions import void_bp
 # keep local reference to a to_decimal implementation we can call (avoid circular imports at module level)
 from routes.ar_ap import to_decimal as _to_decimal
-from routes.utils import cache 
+from routes.utils import cache
+import json
 
 def create_app():
     app = Flask(__name__, instance_relative_config=True)
@@ -68,19 +69,40 @@ def create_app():
 
     @app.before_request
     def check_setup():
-        # Allow access to setup pages and static files without redirection
-        if request.endpoint and request.endpoint.startswith(('core.setup', 'static')):
+        from routes.license_utils import get_days_until_expiration
+        import json
+        
+        # ✅ Allow these endpoints even when expired
+        allowed_when_expired = ('core.setup_license', 'core.setup_company', 'core.setup_admin', 
+                                'core.login', 'core.logout', 'core.settings', 'static')
+        
+        if request.endpoint and any(request.endpoint.startswith(ep) for ep in allowed_when_expired):
             return
 
-        # If user is not authenticated and is trying to access anything else, let login handle it
+        # Check license expiration (block access if expired)
+        company = CompanyProfile.query.first()
+        if company and company.license_data_json and current_user.is_authenticated:
+            try: 
+                license_data = json.loads(company.license_data_json)
+                days_left = get_days_until_expiration(license_data)
+                
+                if days_left is not None and days_left < 0:
+                    # ✅ License expired - redirect to renewal page
+                    if request.endpoint not in ('core.license_expired', 'core.settings'):
+                        flash('⚠️ Your license has expired.  Please contact support to renew.', 'danger')
+                        return redirect(url_for('core.license_expired'))  # Create this route
+            except Exception as e:
+                # ✅ Log the error instead of silently ignoring
+                print(f"❌ License check error: {e}")
+                import traceback
+                traceback.print_exc()
+
+        # Existing setup checks...  
         if not current_user.is_authenticated and request.endpoint != 'core.login':
-             # Check for Company Profile first
             if not CompanyProfile.query.first():
                 return redirect(url_for('core.setup_license'))
-            # Check for Admin User next
             elif not User.query.filter_by(role='Admin').first():
-                 return redirect(url_for('core.setup_license')) # Start from step 1
-
+                return redirect(url_for('core.setup_admin'))
 
 
 

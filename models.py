@@ -7,6 +7,7 @@ from sqlalchemy.orm import validates
 from decimal import Decimal, ROUND_HALF_UP, getcontext
 from sqlalchemy.types import TypeDecorator, Numeric as SA_Numeric
 import logging
+from sqlalchemy import Text
 
 
 db = SQLAlchemy()
@@ -65,12 +66,15 @@ class CompanyProfile(db.Model):
     business_style = db.Column(db.String(200))
     tin = db.Column(db.String(50), nullable=False)
     address = db.Column(db.String(300), nullable=False)
-    license_key = db.Column(db.String(100))
     next_or_number = db.Column(db.Integer, default=1)
     next_si_number = db.Column(db.Integer, default=1)
     next_invoice_number = db.Column(db.Integer, default=1)
     next_consignment_number = db.Column(db.Integer, default=1)
     branch = db.Column(db.String(100), nullable=True)
+
+    license_key = db.Column(db.Text)
+    license_data_json = db.Column(db.Text)
+    license_validated_at = db.Column(db.DateTime)
 
 class Account(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -78,6 +82,7 @@ class Account(db.Model):
     name = db.Column(db.String(200), nullable=False)
     type = db.Column(db.String(50), nullable=False)  # Asset, Liability, Equity, Revenue, Expense
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
 
 class Product(db.Model):
     id = db.Column(db.Integer, primary_key=True)
