@@ -180,15 +180,25 @@ def seed_essential_data(app):
 
 
 
-if __name__ == '__main__':
+if __name__ == '__main__': 
     app = create_app()
     with app.app_context():
+        # Verify MariaDB connection
+        try: 
+            engine_name = db.engine.dialect.name
+            if engine_name not in ('mysql', 'mariadb'):
+                raise RuntimeError(f"❌ Unsupported database:  {engine_name}. MariaDB/MySQL required.")
+            print(f"✅ Connected to {engine_name. upper()} database")
+        except Exception as e:
+            print(f"❌ Database connection failed: {e}")
+            exit(1)
+        
         # 1. Create all tables
         db.create_all()
         
-        # 2. Seed the essential data (Pass the app object to the function)
+        # 2. Seed the essential data
         seed_essential_data(app)
         
-    # Listen on all interfaces so other devices on the LAN can connect.
-    # NOTE: For LAN access use host='0.0.0.0'. Do NOT expose debug=True in production.
+    # Listen on all interfaces for LAN access (offline web app)
+    print(f"🌐 Starting offline web app on http://0.0.0.0:5000")
     app.run(host='0.0.0.0', port=5000, debug=True)
