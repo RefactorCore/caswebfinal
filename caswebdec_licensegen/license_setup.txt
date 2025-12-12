@@ -1,0 +1,291 @@
+# CASWeb License: Key & Server Setup Guide
+
+This README explains, step‑by‑step, how to generate an RSA keypair with the included license generator, how to issue licenses, and how to configure your web application to validate RSA-signed licenses (recommended). Place this file beside `license_generator.py` and ship it with your vendor tooling.
+
+Contents
+- Overview
+- Prerequisites
+- Generate RSA keypair (two ways)
+- Generate a license (GUI + CLI)
+- Deploy public key to the web app (customer)
+- Configure the web app to verify licenses (environment variables)
+  - Linux / macOS (shell)
+  - systemd service
+  - Windows PowerShell and persistent env (setx)
+- Install Python dependency (cryptography)
+- Restart the app
+- Validate a license on the server (quick test)
+- HMAC fallback option
+- Troubleshooting
+- Security notes
+
+---
+
+SUMMARY for first time setup of LICENSE
+1. Ran the license generator on clients device and fill up the necessary details
+2. Check the "Bind to machine" then click the "compute local HWI ID". copy it for Vendor copy.
+3. Create folder to the client side on drive C: the folder named is "certs"
+4. For private key path: click Generate keys then create folder named of the client (only for vendor folder). Then click browser click the private generated key.
+5. Generate license key.
+6. Copy the public key from step 4 then paste it to "certs" folder of the client.
+7. open powershell then ran this command setx LICENSE_PUBLIC_KEY_PATH "C:\certs\vendor_public_key.pem"
+8. Then add the license key to the system all good to go.
+
+SUMMARY for renew cert
+1. Ran the license generator fill up necessary 
+2. Check the Bind to machine then paste the copy HWID from the client side
+3. Click browse then find the prive key of the client. 
+4. Generate license key give it to the owner
+
+## Overview
+
+- Private key (vendor_private_key.pem) — KEEP ON VENDOR MACHINE ONLY. Never distribute or commit.
+- Public key (vendor_public_key.pem) — safe to distribute to customer web apps. The web app uses this to verify signatures.
+- License token format: base64( data_json_bytes + b"::" + signature_bytes )
+- This README covers RSA signing (recommended). HMAC fallback is supported but less secure (makes token symmetric).
+
+---
+
+## Prerequisites
+
+- Python 3.8+ on vendor and server (server needs `cryptography` if using RSA).
+- `license_generator.py` (GUI) included in this folder.
+- Optional: OpenSSL if you prefer CLI key generation (not required - the GUI/embedded script can create keys).
+
+---
+
+## A. Generate RSA keypair
+
+You have two options: using the GUI button or using a short Python script / OpenSSL.
+
+A1. Using the license generator GUI (recommended)
+1. Run:
+   ```
+   py license_generator.py
+   ```
+2. In the GUI click `Generate Keys` and pick a directory (default: `~/.casweb_keys`).
+3. Optionally enter a passphrase to encrypt the private key.
+4. The GUI will create:
+   - `vendor_private_key.pem` (private key — store securely)
+   - `vendor_public_key.pem` (public key — distribute to apps)
+5. After creation the GUI pre-fills the Private Key field so you can immediately sign licenses.
+
+A2. Using the included Python script (programmatic)
+If you prefer a headless script, run a short generator (requires `cryptography`):
+
+```python
+# generate_rsa_keys.py (example)
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import serialization
+priv = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+priv_pem = priv.private_bytes(encoding=serialization.Encoding.PEM,
+                             format=serialization.PrivateFormat.PKCS8,
+                             encryption_algorithm=serialization.NoEncryption())
+with open("vendor_private_key.pem","wb") as f: f.write(priv_pem)
+pub_pem = priv.public_key().public_bytes(encoding=serialization.Encoding.PEM,
+                                        format=serialization.PublicFormat.SubjectPublicKeyInfo)
+with open("vendor_public_key.pem","wb") as f: f.write(pub_pem)
+```
+
+A3. Using OpenSSL (CLI)
+```bash
+# unencrypted private key (2048-bit)
+openssl genpkey -algorithm RSA -out vendor_private_key.pem -pkeyopt rsa_keygen_bits:2048
+
+# optional: create encrypted private key (AES-256)
+openssl genpkey -algorithm RSA -aes256 -out vendor_private_key.pem -pkeyopt rsa_keygen_bits:2048
+
+# extract public key
+openssl rsa -in vendor_private_key.pem -pubout -out vendor_public_key.pem
+```
+
+---
+
+## B. Generate License
+
+B1. GUI method (license_generator.py)
+1. Start GUI:
+   ```
+   py license_generator.py
+   ```
+2. Fill:
+   - Client Name
+   - Company Name
+   - Validity (days)
+   - Optionally: check "Bind to Machine" and click "Compute Local HW ID" on the customer's machine and paste the HW ID (if you want machine-bound license).
+3. Select Signature Mode: `RSA`.
+4. Ensure `Private Key (PEM) path` points to `vendor_private_key.pem`.
+5. Click `Generate License`.
+6. Copy the displayed base64 token and deliver to the customer.
+
+B2. CLI method (script)
+- Use a script that loads `vendor_private_key.pem` and signs deterministic JSON payload, then prints the base64 token. (You can request a CLI script if needed.)
+
+---
+
+## C. Deploy public key to web app (customer)
+
+- Copy `vendor_public_key.pem` to the web server(s). Example paths:
+  - Linux: `/etc/certs/vendor_public_key.pem`
+  - Windows: `C:\certs\vendor_public_key.pem`
+
+Set file permissions so the web app process can read it (Linux):
+```bash
+sudo mkdir -p /etc/certs
+sudo cp vendor_public_key.pem /etc/certs/vendor_public_key.pem
+sudo chown root:www-data /etc/certs/vendor_public_key.pem   # adjust user/group
+sudo chmod 640 /etc/certs/vendor_public_key.pem
+```
+
+---
+
+## D. Configure web app environment variables (so license_utils loads public key)
+
+You must set one of:
+- `LICENSE_PUBLIC_KEY_PATH` = path to public key file (recommended), OR
+- `LICENSE_PUBLIC_KEY_PEM` = PEM content (string) OR
+- `LICENSE_SECRET_KEY` = HMAC secret (only for HMAC mode)
+
+### 1) Temporary (current shell) — Linux / macOS
+```bash
+export LICENSE_PUBLIC_KEY_PATH="/etc/certs/vendor_public_key.pem"
+# restart your app in the same shell
+py app.py
+```
+
+### 2) systemd (persistent)
+Edit your unit file (e.g. `/etc/systemd/system/casweb.service`) — add:
+```
+[Service]
+Environment="LICENSE_PUBLIC_KEY_PATH=/etc/certs/vendor_public_key.pem"
+```
+Then:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart casweb.service
+```
+
+### 3) Windows — PowerShell (temporary)
+```powershell
+$env:LICENSE_PUBLIC_KEY_PATH = 'C:\certs\vendor_public_key.pem'
+py app.py
+```
+
+### 4) Windows — persistent (setx) — note: setx affects new processes
+```powershell
+setx LICENSE_PUBLIC_KEY_PATH "C:\certs\vendor_public_key.pem"
+# Log out/in or restart the service to pick up new env var
+```
+
+---
+
+## E. Install `cryptography` on server
+
+If the public key is present, `license_utils` will attempt to use `cryptography`. Install it in the web app virtualenv:
+
+```bash
+# activate your venv, then:
+pip install cryptography
+```
+
+On Linux with systemd you may need to restart the service after installing.
+
+---
+
+## F. Restart the app
+
+- Restart your WSGI/Flask process (systemd, gunicorn, or run `py app.py` in dev).
+- `license_utils` loads the public key at import-time; a restart is required for changes to take effect.
+
+---
+
+## G. Validate the license (quick test)
+
+You can validate the token programmatically on the server (substitute `PASTE_TOKEN_HERE`):
+
+```python
+# quick_test_validate.py
+import os, json
+# ensure env var is set in this process if not already:
+# os.environ['LICENSE_PUBLIC_KEY_PATH'] = '/etc/certs/vendor_public_key.pem'
+
+from routes import license_utils
+token = "PASTE_TOKEN_HERE"
+ok, data, err = license_utils.validate_license(token)
+print("OK:", ok)
+print("ERR:", err)
+print("DATA:", json.dumps(data, indent=2) if data else None)
+print("Days left:", license_utils.get_days_until_expiration(data) if data else None)
+```
+
+Run:
+```
+py quick_test_validate.py
+```
+
+If `OK: True`, verification succeeded.
+
+If you prefer to paste the token into the app UI:
+- Visit `/setup/license` (core.setup_license) and paste the token — the app will call `validate_license()` and show error/success messages.
+
+---
+
+## H. HMAC fallback (if you used HMAC to sign tokens)
+
+If you issued an HMAC license instead of RSA:
+- Set `LICENSE_SECRET_KEY` on the server equal to the secret used by your generator:
+  - Linux:
+    ```bash
+    export LICENSE_SECRET_KEY="your-hmac-secret"
+    ```
+  - Windows PowerShell:
+    ```powershell
+    $env:LICENSE_SECRET_KEY = "your-hmac-secret"
+    ```
+  - Or use `setx` for persistent storage.
+- Restart the app.
+- HMAC is less secure (shared secret); prefer RSA.
+
+---
+
+## I. Troubleshooting
+
+- Error: `Invalid license key: Server not configured to verify license`
+  - Cause: web app didn't find `LICENSE_PUBLIC_KEY_PATH` or `LICENSE_SECRET_KEY`.
+  - Fix: set `LICENSE_PUBLIC_KEY_PATH` to the public key or set `LICENSE_SECRET_KEY` (for HMAC), then restart app.
+
+- Error: `License signature invalid`
+  - Cause: token does not match the public key; ensure this token was signed by the matching private key.
+  - Fix: re-generate license using the private key that corresponds to the installed public key.
+
+- Error: `License has expired`
+  - Fix: generate a new license with a later expiry date.
+
+- If `license_utils._public_key` is `None` (in the quick test output), your public key did not load. Check path, file readability and `cryptography` installation.
+
+---
+
+## J. Security best practices
+
+- Never distribute `vendor_private_key.pem`. Keep it on the vendor machine or secure vault.
+- Distribute only `vendor_public_key.pem` to apps.
+- If private key is stored on disk, protect it with a passphrase and use an HSM or secret manager when possible.
+- Rotate keys if private key is suspected compromised; reissue new public key and re-sign licenses, or maintain signature versioning.
+
+---
+
+## Files referenced in this folder
+
+- `license_generator.py` — GUI/Tool to create keys and generate licenses.
+- `LICENSE_SETUP_README.md` — (this file) copy it to your license generator folder so operators know what to do.
+- `vendor_private_key.pem` (generated by you) — KEEP SECURE on vendor machine.
+- `vendor_public_key.pem` (generated by you) — distribute to customer web server(s).
+
+---
+
+If you want, I can:
+- Create a one‑file `sign_license_cli.py` that loads `vendor_private_key.pem` and prints a license token (for scripted issuance).
+- Create a `systemd` service file example you can drop in `/etc/systemd/system/` that shows how to export `LICENSE_PUBLIC_KEY_PATH`.
+- Add a short `verify_token.sh` or `verify_token.ps1` helper that runs the quick test on Linux/Windows.
+
+Which helper would you like me to add next?

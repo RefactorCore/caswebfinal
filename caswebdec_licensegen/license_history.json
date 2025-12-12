@@ -1,0 +1,38 @@
+[
+  {
+    "id": "LIC-1765334630",
+    "client": "Raddi",
+    "company": "Raddi motorshop",
+    "expires": "2025-12-11",
+    "issued": "2025-12-10T10:43:50Z",
+    "mode": "rsa",
+    "hw_bound": true,
+    "notes": "testing",
+    "license_key": "eyJjbGllbnQiOiJSYWRkaSIsImNvbXBhbnkiOiJSYWRkaSBtb3RvcnNob3AiLCJleHBpcmVzIjoiMjAyNS0xMi0xMSIsImh3X2lkIjoiNTcyYzUwMzhmNDE1OTVhOWM2NjEwY2NmNWQyZWY1ZGU2MjE5M2VhNzgyYmQ0YjAwMzVjMDU2OWExOGMwMjlhZSIsImlkIjoiTElDLTE3NjUzMzQ2MzAiLCJpc3N1ZWQiOiIyMDI1LTEyLTEwVDEwOjQzOjUwWiIsIm5vdGVzIjoidGVzdGluZyJ9Ojo6sKjwhdNDDKGETDjv66JoPDUMOeU0qPne5JmaVkCPQAcPvIYeXq2iAno4iL8SpoMRRLsxskmdS7FLF8PQyV29gm0DtMfJBkcYk9fzn2x4d5t2LPKfZQKKvw/1avKAfBCtBDXu2eKxSCvmUWcEslagZ9/f9tR9uH+h23m2fmC2gW9rzl67z3lII6mMRsP/ll7YVlD7Bd5WShEQM9pEVtxDaFwLuWm8N4avhSfGXWKwbwvMaP1MiIdvgMybUBIr1BoITwIwXHaKhBRvpir+e6S/8Zi9QBd3Wlrt7fg22a684lxHnynu+LwnkTjzc7xxspxglsuGwtBBO9uoSmaD+m4f",
+    "created_at": "2025-12-10T10:43:50.117420"
+  },
+  {
+    "id": "LIC-1765423052",
+    "client": "Raddi",
+    "company": "Raddi motorshop",
+    "expires": "2025-12-12",
+    "issued": "2025-12-11T11:17:32Z",
+    "mode": "rsa",
+    "hw_bound": true,
+    "notes": "Renewal testing",
+    "license_key": "eyJjbGllbnQiOiJSYWRkaSIsImNvbXBhbnkiOiJSYWRkaSBtb3RvcnNob3AiLCJleHBpcmVzIjoiMjAyNS0xMi0xMiIsImh3X2lkIjoiNTcyYzUwMzhmNDE1OTVhOWM2NjEwY2NmNWQyZWY1ZGU2MjE5M2VhNzgyYmQ0YjAwMzVjMDU2OWExOGMwMjlhZSIsImlkIjoiTElDLTE3NjU0MjMwNTIiLCJpc3N1ZWQiOiIyMDI1LTEyLTExVDExOjE3OjMyWiIsIm5vdGVzIjoiUmVuZXdhbCB0ZXN0aW5nIn06OlGdDIiuhpKd42WhEniRWScEJCpylkcFmQ+CUKpkuijY9jTbjvRRCiwLuzr4LgK42s9K2iMsUPPUKEUQT1cVQJJvni6QkF3yqydg3CTZO5aoM6iB7uk2K+qqZ+zoTc/LnhnVRwE94N/IAZdPTNz+iwRP4pYYHoOq222ceoxIHhCJ9H+iUP0A2gJbGIbvHnMxwdU77ikEpk0cKjYZ4CRTz8NUrIcRRvDH1+dh9OnLwsDzfGv9/3nh4ioYOaQ8o6sDpTq2+rnW2mhNC/vWszdTHFs+JjEZFIabQxRM68ok8FVy3ry4UyAf09MfLT4Lrgooz6KAinNXWM5WJbqfwQEgSQs=",
+    "created_at": "2025-12-11T11:17:32.752960"
+  },
+  {
+    "id": "LIC-1765492464",
+    "client": "Raddi",
+    "company": "Raddi motorshop",
+    "expires": "2025-12-20",
+    "issued": "2025-12-12T06:34:24Z",
+    "mode": "rsa",
+    "hw_bound": true,
+    "notes": "test",
+    "license_key": "eyJjbGllbnQiOiJSYWRkaSIsImNvbXBhbnkiOiJSYWRkaSBtb3RvcnNob3AiLCJleHBpcmVzIjoiMjAyNS0xMi0yMCIsImh3X2lkIjoiNTcyYzUwMzhmNDE1OTVhOWM2NjEwY2NmNWQyZWY1ZGU2MjE5M2VhNzgyYmQ0YjAwMzVjMDU2OWExOGMwMjlhZSIsImlkIjoiTElDLTE3NjU0OTI0NjQiLCJpc3N1ZWQiOiIyMDI1LTEyLTEyVDA2OjM0OjI0WiIsIm5vdGVzIjoidGVzdCJ9Ojogh6iXc41OZ+1gBztTm/YsObAHP5EdG64d0xv7DEL5Js9J5ifk+N6hE1C8r8TSyxWf+ZxUNPNM/sGSMUVsBV8A8LxjXKV4+Trc4W6LpdD+KRqNlj1tJc2kFVBkk2I+EUqHlXRw6Ae9PIGnWcwOmoBsiflO/Su6RxcmTl17Dgcg2FwYMsiGxYuSUAU1xG0vjEwVMUA+N98gSl5UsYMSZQAb7vEXL8dL2ulsozf2087LLvDN6FRXmTJ+53mwohMY9hrK+Zv4xzDX5k6LI+KTuHyxzACtHHDFpywIZoWfhhB1iYJqwz6nk2wtE8GkVYi8uue+BFD1OtFT04UjcBC8kwqr",
+    "created_at": "2025-12-12T06:34:24.629147"
+  }
+]
