@@ -4,6 +4,7 @@ from passlib.hash import pbkdf2_sha256
 from flask_login import login_required, current_user
 from .decorators import role_required
 from .utils import log_action
+from sqlalchemy import func
 
 user_bp = Blueprint('users', __name__, url_prefix='/users')
 

@@ -70,7 +70,7 @@ def inject_company():
 
 @consignment_bp.route('/suppliers')
 @login_required
-@role_required('Admin', 'Accountant')
+@role_required('Admin', 'Accountant','Cashier')
 def suppliers():
     """List all consignment suppliers"""
     search = request.args.get('search', '').strip()
@@ -99,7 +99,7 @@ def suppliers():
 
 @consignment_bp.route('/suppliers/add', methods=['POST'])
 @login_required
-@role_required('Admin', 'Accountant')
+@role_required('Admin', 'Accountant','Cashier')
 def add_supplier():
     """Add a new consignment supplier"""
     try:
@@ -135,7 +135,7 @@ def add_supplier():
 
 @consignment_bp.route('/suppliers/<int:supplier_id>/edit', methods=['POST'])
 @login_required
-@role_required('Admin', 'Accountant')
+@role_required('Admin', 'Accountant','Cashier')
 def edit_supplier(supplier_id):
     """Edit an existing consignment supplier"""
     supplier = ConsignmentSupplier.query.get_or_404(supplier_id)
@@ -169,7 +169,7 @@ def edit_supplier(supplier_id):
 
 @consignment_bp.route('/suppliers/<int:supplier_id>/toggle', methods=['POST'])
 @login_required
-@role_required('Admin', 'Accountant')
+@role_required('Admin', 'Accountant','Cashier')
 def toggle_supplier(supplier_id):
     """Toggle supplier active status"""
     supplier = ConsignmentSupplier.query.get_or_404(supplier_id)
@@ -379,7 +379,7 @@ def view_consignment(consignment_id):
 
 @consignment_bp.route('/item/<int:item_id>/adjust', methods=['POST'])
 @login_required
-@role_required('Admin', 'Accountant')
+@role_required('Admin', 'Accountant','Cashier')
 def adjust_item(item_id):
     """Mark items as damaged (cannot be sold or returned)"""
     item = ConsignmentItem.query.get_or_404(item_id)

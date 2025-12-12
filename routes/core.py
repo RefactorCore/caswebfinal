@@ -18,6 +18,9 @@ from routes.fifo_utils import create_inventory_lot, consume_inventory_fifo
 from werkzeug.routing import BuildError
 from sqlalchemy import union_all
 from sqlalchemy.orm import joinedload
+from routes.license_utils import get_days_until_expiration, is_license_expiring_soon
+import logging
+
 
 from decimal import Decimal, ROUND_HALF_UP, getcontext, InvalidOperation
 getcontext().prec = 28
@@ -94,21 +97,148 @@ def _register_jinja_filters(state):
     app.jinja_env.filters['num'] = _num_filter
 
 
+# Endpoints that must remain reachable even when license expired
+_LICENSE_WHITELIST = {
+    'static',
+    'core.login',
+    'core.logout',
+    'core.setup_license',
+    'core.setup_company',
+    'core.setup_admin',
+    'core.forgot_password',
+    'core.reset_password_form',
+    'core.license_expired',  # allow viewing the expired page
+    'hwid.show_hw_id'  # if you added an hwid endpoint; adjust as needed
+}
+
+@core_bp.before_app_request
+def enforce_license():
+    """
+    Redirect to license_expired if the stored license is expired.
+
+    - Treats days_left <= 0 as expired (0 = expires today).
+    - Skips static, health/api endpoints and a small whitelist used during setup.
+    - If license missing, user is redirected to setup/license.
+    - Authenticated users are redirected to core.license_expired when expired.
+    - Unauthenticated users are redirected to login (with flash) when expired.
+    """
+    try:
+        endpoint = request.endpoint or ''
+        logging.debug("License check: request.endpoint=%r, path=%r", endpoint, request.path)
+
+        # Always allow static assets
+        if endpoint.startswith('static'):
+            return None
+
+        # Allow whitelisted endpoints (adjust list if needed)
+        if endpoint in _LICENSE_WHITELIST or endpoint.startswith('api.'):
+            logging.debug("License check: endpoint %r is whitelisted", endpoint)
+            return None
+
+        # If the DB/tables are not available yet, don't block (initial setup)
+        try:
+            company = CompanyProfile.query.first()
+        except Exception:
+            logging.debug("License check: DB not ready, skipping check")
+            return None
+
+        # No license stored -> allow only setup/login endpoints
+        if not company or not company.license_data_json:
+            logging.debug("License check: no company or license present")
+            if endpoint.startswith('core.setup') or endpoint in ('core.login',):
+                return None
+            return redirect(url_for('core.setup_license'))
+
+        # Parse stored license JSON
+        try:
+            license_data = json.loads(company.license_data_json)
+        except Exception:
+            logging.warning("License check: failed to parse company.license_data_json - forcing re-setup")
+            flash('License data is invalid. Please re-enter your license.', 'danger')
+            return redirect(url_for('core.setup_license'))
+
+        days_left = get_days_until_expiration(license_data)
+        logging.debug("License check: days_left=%r", days_left)
+
+        # Treat days_left <= 0 as expired (0 = expires today). Change to < 0 if you want allow expiry-day access.
+        if days_left is not None and int(days_left) <= 0:
+            logging.info("License check: license expired or expiring today (days_left=%s) - endpoint=%s", days_left, endpoint)
+            # If user already viewing the expired page, do nothing
+            if endpoint == 'core.license_expired':
+                return None
+
+            # If authenticated send them to the expired page
+            if current_user.is_authenticated:
+                return redirect(url_for('core.license_expired'))
+
+            # Not authenticated -> send to login with message
+            flash('Your license has expired. Please login to renew or contact your administrator.', 'warning')
+            return redirect(url_for('core.login'))
+
+        # Not expired (or no expiry info) -> continue
+        return None
+
+    except Exception:
+        logging.exception("License enforcement middleware encountered an unexpected error")
+        # Fail-open so the app doesn't become unusable if the middleware crashes
+        return None
+
 @core_bp.route('/setup/license', methods=['GET', 'POST'])
 def setup_license():
+    from routes.license_utils import validate_license
+
     if request.method == 'POST':
-        license_key = request.form.get('license_key')
-        if license_key == 'test123':
-            session['validated_license_key'] = license_key
-            return redirect(url_for('core.setup_company'))
-        else:
-            flash('Invalid license key. Please use the testing key.', 'danger')
+        license_key = request.form.get('license_key', '').strip()
+
+        if not license_key:
+            flash('Please enter a license key.', 'danger')
+            return render_template('setup/license.html')
+
+        # Validate license
+        is_valid, license_data, error_msg = validate_license(license_key)
+
+        if not is_valid:
+            flash(f'Invalid license key: {error_msg}', 'danger')
+            return render_template('setup/license.html')
+
+        # See if this license is already stored on any CompanyProfile
+        existing_profile_with_key = CompanyProfile.query.filter_by(license_key=license_key).first()
+        current_company = CompanyProfile.query.first()
+
+        # If the key is already used by a DIFFERENT company, reject it
+        if existing_profile_with_key and (not current_company or existing_profile_with_key.id != current_company.id):
+            flash('This license key has already been used.', 'danger')
+            return render_template('setup/license.html')
+
+        # If we already have a CompanyProfile -> this is a renewal/update
+        if current_company:
+            try:
+                current_company.license_key = license_key
+                current_company.license_data_json = json.dumps(license_data) if license_data else None
+                current_company.license_validated_at = datetime.utcnow()
+                db.session.commit()
+                flash(f'License updated! Expires: {license_data.get("expires") if license_data else "N/A"}', 'success')
+                # Redirect to settings/dashboard after successful renewal
+                return redirect(url_for('core.index') if current_user.is_authenticated else url_for('core.login'))
+            except Exception as e:
+                db.session.rollback()
+                logging.exception("Failed to update CompanyProfile with new license")
+                flash(f'Failed to save license: {e}', 'danger')
+                return render_template('setup/license.html')
+
+        # No CompanyProfile exists yet -> original setup flow
+        session['validated_license_key'] = license_key
+        session['license_data'] = license_data
+
+        flash(f'License validated!  Expires: {license_data.get("expires") if license_data else "N/A"}', 'success')
+        return redirect(url_for('core.setup_company'))
+
     return render_template('setup/license.html')
 
 
 @core_bp.route('/setup/company', methods=['GET', 'POST'])
 def setup_company():
-    if request.method == 'POST':
+    if request.method == 'POST': 
         name = request.form.get('name')
         tin = request.form.get('tin')
         address = request.form.get('address')
@@ -119,9 +249,20 @@ def setup_company():
             flash('Please fill out all company details.', 'warning')
             return redirect(url_for('core.setup_company'))
 
+        # Get license from session
         license_key = session.pop('validated_license_key', None)
+        license_data = session.pop('license_data', None)
 
-        profile = CompanyProfile(name=name, tin=tin, address=address, business_style=style, branch=branch)
+        profile = CompanyProfile(
+            name=name, 
+            tin=tin, 
+            address=address, 
+            business_style=style, 
+            branch=branch,
+            license_key=license_key,
+            license_data_json=json.dumps(license_data) if license_data else None,
+            license_validated_at=datetime.utcnow()
+        )
         db.session.add(profile)
 
         # Auto-create Branch record if branch is provided
@@ -134,29 +275,72 @@ def setup_company():
 
         db.session.commit()
         return redirect(url_for('core.setup_admin'))
+    
     return render_template('setup/company.html')
 
 
 @core_bp.route('/setup/admin', methods=['GET', 'POST'])
 def setup_admin():
-    if request.method == 'POST':
-        username = request.form.get('username')
-        password = request.form.get('password')
-
+    """Create the first admin user"""
+    # Check if admin already exists
+    if User.query.filter_by(role='Admin').first():
+        flash('Admin account already exists. Please login. ', 'info')
+        return redirect(url_for('core.login'))
+    
+    if request.method == 'POST': 
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+        
         if not username or not password:
-            flash('Username and password cannot be empty.', 'warning')
-            return redirect(url_for('core.setup_admin'))
-
-        hashed_password = pbkdf2_sha256.hash(password)
-        admin_user = User(username=username, password_hash=hashed_password, role='Admin')
-        db.session.add(admin_user)
-        db.session.commit()
-
-        # Log the new admin in automatically
-        login_user(admin_user)
-        flash('Setup complete! Welcome to your new accounting system.', 'success')
-        return redirect(url_for('core.index'))
+            flash('Username and password are required.', 'danger')
+            return render_template('setup/admin.html')
+        
+        if len(password) < 6:
+            flash('Password must be at least 6 characters. ', 'danger')
+            return render_template('setup/admin.html')
+        
+        try:
+            admin_user = User(
+                username=username,
+                password_hash=pbkdf2_sha256.hash(password),
+                role='Admin'
+            )
+            db.session.add(admin_user)
+            db.session.commit()
+            
+            log_action(f'Created admin account: {username}', user=admin_user)
+            flash('✅ Admin account created successfully!  Please login.', 'success')
+            return redirect(url_for('core.login'))
+            
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error creating admin account: {str(e)}', 'danger')
+            return render_template('setup/admin.html')
+    
     return render_template('setup/admin.html')
+
+@core_bp.route('/license-expired')
+@login_required
+def license_expired():
+    """Show license expiration notice"""
+    company = CompanyProfile.query.first()
+    
+    license_data = None
+    days_expired = 0
+    
+    if company and company.license_data_json:
+        try:
+            license_data = json.loads(company.license_data_json)
+            days_left = get_days_until_expiration(license_data)
+            if days_left is not None: 
+                days_expired = abs(days_left)
+        except:
+            pass
+    
+    return render_template('license_expired.html', 
+                         company=company, 
+                         license_data=license_data,
+                         days_expired=days_expired)
 
 
 @core_bp.route('/')
@@ -166,6 +350,9 @@ def index():
     from models import (Product, Sale, Purchase, ARInvoice, APInvoice, 
                        InventoryLot, SaleItem, Account, AuditLog)
     from routes.reports import aggregate_account_balances
+
+    from routes.license_utils import get_days_until_expiration, is_license_expiring_soon
+
 
     # Base Product Data
     products = Product.query.all()
@@ -475,6 +662,32 @@ def index():
     due_soon_items = [item for item in due_items if item['urgency'] == 'due_soon']
     upcoming_items = [item for item in due_items if item['urgency'] == 'upcoming'][:5]
 
+    # Check license expiration
+    company = CompanyProfile.query.first()
+    license_warning = None
+    
+    if company and company.license_data_json:
+        try:
+            license_data = json.loads(company.license_data_json)
+            days_left = get_days_until_expiration(license_data)
+            
+            if days_left is not None: 
+                if days_left < 0:
+                    license_warning = {
+                        'type': 'danger',
+                        'message':  f'⚠️ LICENSE EXPIRED!  Your license expired {abs(days_left)} days ago.',
+                        'days_left': days_left
+                    }
+                elif is_license_expiring_soon(license_data, warning_days=7):
+                    license_warning = {
+                        'type': 'warning',
+                        'message': f'⚠️ License expiring in {days_left} days!  Please renew soon.',
+                        'days_left': days_left
+                    }
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+
     return render_template(
         'index.html',
         products=products,
@@ -495,7 +708,8 @@ def index():
         overdue_items=overdue_items,
         due_soon_items=due_soon_items,
         upcoming_items=upcoming_items,
-        config=Config
+        config=Config,
+        license_warning=license_warning
     )
 
 
@@ -2496,7 +2710,7 @@ def adjust_stock():
 
 @core_bp.route('/stock-adjustments')
 @login_required
-@role_required('Admin', 'Accountant')
+@role_required('Admin', 'Accountant','Cashier')
 def stock_adjustments():
     search = request.args.get('search', '').strip()
     status = request.args.get('status', '').strip()
@@ -2577,7 +2791,7 @@ def inventory_lots(product_id):
 
 @core_bp.route('/inventory-movement/create', methods=['POST'])
 @login_required
-@role_required('Admin', 'Accountant')
+@role_required('Admin', 'Accountant','Cashier')
 def create_inventory_movement():
     
     # 1. Determine the source of the data and extract core fields
@@ -2790,7 +3004,7 @@ def manage_branches():
 
 @core_bp.route('/inventory-movement')
 @login_required
-@role_required('Admin', 'Accountant')
+@role_required('Admin', 'Accountant','Cashier')
 def inventory_movement():
     branches = Branch.query.filter_by(is_active=True).all()
     movements = InventoryMovement.query.order_by(InventoryMovement.created_at.desc()).all()
